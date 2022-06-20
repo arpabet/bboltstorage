@@ -35,28 +35,28 @@ type boltStorage struct {
 	name   string
 	db     *bolt.DB
 
-	dataDir string
+	dataFile     string
 	dataFilePerm os.FileMode
-	options []Option
+	options      []Option
 }
 
-func New(name string, dataDir string, dataFilePerm os.FileMode, options... Option) (storage.ManagedStorage, error) {
+func New(name string, dataFile string, dataFilePerm os.FileMode, options... Option) (storage.ManagedStorage, error) {
 
 	if name == "" {
 		return nil, errors.New("empty bean name")
 	}
 
-	db, err := OpenDatabase(dataDir, dataFilePerm, options...)
+	db, err := OpenDatabase(dataFile, dataFilePerm, options...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &boltStorage {
-		name: name,
-		db: db,
-		dataDir: dataDir,
+		name:         name,
+		db:           db,
+		dataFile:     dataFile,
 		dataFilePerm: dataFilePerm,
-		options: options,
+		options:      options,
 	}, nil
 }
 
