@@ -28,7 +28,7 @@ import (
 	"go.arpabet.com/storage"
 	"io"
 	"os"
-	"errors"
+	"github.com/pkg/errors"
 )
 
 type boltStorage struct {
@@ -208,14 +208,21 @@ func (t* boltStorage) getImpl(fullKey []byte, required bool) ([]byte, error) {
 	return val, nil
 }
 
-func (t* boltStorage) EnumerateRaw(bucket, seek []byte, batchSize int, onlyKeys bool, cb func(entry *storage.RawEntry) bool) error {
+func (t* boltStorage) EnumerateRaw(fullPrefix, fullSeek []byte, batchSize int, onlyKeys bool, cb func(entry *storage.RawEntry) bool) error {
 
 	// for API compatibility with other storage impls (PnP)
-	if !bytes.HasPrefix(seek, bucket) {
+	if !bytes.HasPrefix(fullSeek, fullPrefix) {
 		return ErrInvalidSeek
 	}
 
-	seek = seek[len(bucket):]
+	bucket, prefix := t.parseKey(fullPrefix)
+	bucketSeek, seek := t.parseKey(fullSeek)
+
+	if !bytes.Equal(bucket, bucketSeek) {
+		return errors.Errorf("seek has bucket '%s' whereas a prefix has bucket '%s'", string(bucketSeek), string(bucket))
+	}
+
+	bucketWithSeparator := append(bucket, BucketSeparator)
 
 	return t.db.View(func(tx *bolt.Tx) error {
 
@@ -225,22 +232,21 @@ func (t* boltStorage) EnumerateRaw(bucket, seek []byte, batchSize int, onlyKeys 
 		}
 
 		cur := b.Cursor()
-		k, v := cur.Seek(seek)  // within bucket
-		if k != nil {
-			re := storage.RawEntry{
-				Key:     k,
-				Value:   v,
-				Ttl:     0,
-				Version: 0,
-			}
-			if !cb(&re) {
-				return nil
-			}
-		}
 
-		for k, v := cur.Seek(seek); k != nil; k, v = cur.Next() {
+		var k, v []byte
+		if len(seek) > 0 {
+			k, v = cur.Seek(seek)
+		} else {
+			k, v = cur.First()
+		}
+		for ; k != nil; k, v = cur.Next() {
+
+			if !bytes.HasPrefix(k, prefix) {
+				break
+			}
+
 			re := storage.RawEntry{
-				Key:     k,
+				Key:     append(bucketWithSeparator, k...),
 				Value:   v,
 				Ttl:     0,
 				Version: 0,
